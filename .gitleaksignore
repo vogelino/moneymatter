@@ -1,0 +1,32 @@
+# Reviewed historical false positives. Keep these fingerprint-specific: broad
+# path exclusions can hide a real credential added to the same file later.
+
+# UI placeholder containing literal BEGIN/END markers and "...", not key data.
+5cb7306445ebcd21c0c99f2654ec6944b25ff69e:packages/frontend/src/i18n/locales/chunks/fr/pages/account-integrations.json:private-key:170
+d7dec04a3f07db75204da7f22bca1ec69659babd:packages/frontend/src/i18n/locales/chunks/ar/pages/account-integrations.json:private-key:170
+d7dec04a3f07db75204da7f22bca1ec69659babd:packages/frontend/src/i18n/locales/chunks/pl/pages/account-integrations.json:private-key:170
+9839736a657d89cf2bae765c1fc8aac812350098:packages/frontend/src/i18n/locales/chunks/de/pages/account-integrations.json:private-key:170
+9839736a657d89cf2bae765c1fc8aac812350098:packages/frontend/src/i18n/locales/chunks/it/pages/account-integrations.json:private-key:170
+9839736a657d89cf2bae765c1fc8aac812350098:packages/frontend/src/i18n/locales/chunks/sk/pages/account-integrations.json:private-key:170
+9839736a657d89cf2bae765c1fc8aac812350098:packages/frontend/src/i18n/locales/chunks/vi/pages/account-integrations.json:private-key:170
+acfd01d0450eeebe3fcee7e282e4c2efe6efed1a:packages/frontend/src/i18n/locales/chunks/ru/pages/account-integrations.json:private-key:170
+506ae66c101e133d497c548903c008f6d6966b9a:packages/frontend/src/i18n/locales/chunks/zh-CN/pages/account-integrations.json:private-key:170
+506ae66c101e133d497c548903c008f6d6966b9a:packages/frontend/src/i18n/locales/chunks/zh-TW/pages/account-integrations.json:private-key:170
+7f1b9e0f9883d68e77c604dcf6812a8f7450abf3:packages/frontend/src/i18n/locales/chunks/es/pages/account-integrations.json:private-key:184
+
+# Domain category identifiers incorrectly classified as generic API keys.
+87ddbebdac9a791407fba98c4206e9754401f2c3:packages/backend/src/services/demo/template/budget-spend.unit.ts:generic-api-key:122
+87ddbebdac9a791407fba98c4206e9754401f2c3:packages/backend/src/services/demo/template/budget-spend.unit.ts:generic-api-key:140
+87ddbebdac9a791407fba98c4206e9754401f2c3:packages/backend/src/services/demo/template/budget-spend.unit.ts:generic-api-key:159
+87ddbebdac9a791407fba98c4206e9754401f2c3:packages/backend/src/services/demo/template/budget-spend.unit.ts:generic-api-key:177
+3e28ec38d4bd9f95d4d50ca6346b8e47049d5e18:packages/backend/src/services/demo/template/merchants.ts:generic-api-key:55
+3e28ec38d4bd9f95d4d50ca6346b8e47049d5e18:packages/backend/src/services/demo/template/generate.ts:generic-api-key:487
+
+# Public, test-only credentials and generated keys used by cryptographic mocks.
+82d6b5fb02e66c59e209374343a0897b85adca3c:packages/backend/src/tests/mocks/walutomat/mock-api.ts:private-key:12
+82d6b5fb02e66c59e209374343a0897b85adca3c:packages/backend/src/tests/mocks/walutomat/mock-api.ts:generic-api-key:6
+82d6b5fb02e66c59e209374343a0897b85adca3c:packages/backend/src/tests/mocks/walutomat/mock-api.ts:generic-api-key:7
+82d6b5fb02e66c59e209374343a0897b85adca3c:packages/backend/src/tests/mocks/walutomat/mock-api.ts:generic-api-key:8
+5258448698b02513264ea77c838cbaa1220a3eb2:packages/backend/src/services/exchange-rates/api-key-rate-limit.service.unit.ts:generic-api-key:10
+1ea036618c75cfb1c40a6fde998e5c3eb6fcb7c5:packages/backend/src/tests/mocks/enablebanking/data.ts:private-key:9
+b46ed63bbdfefc2ca7ce1522560041bb0233d429:packages/backend/src/tests/mocks/lunchflow/data.ts:generic-api-key:4

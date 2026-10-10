@@ -1,0 +1,22 @@
+min_version: 1.13.6
+
+pre-commit:
+  piped: true
+  commands:
+    secrets:
+      run: npm run security:secrets:staged
+    format-staged:
+      run: ./scripts/hooks/format-staged.sh
+    lint:
+      run: npm run lint
+
+pre-push:
+  piped: true
+  commands:
+    secrets:
+      # Scan every reachable local commit. This is deliberately broader than
+      # only the outgoing range and catches secrets introduced on merged or
+      # rebased branches before any refs leave the workstation.
+      run: npm run security:secrets:history
+    lint:
+      run: npm run lint
