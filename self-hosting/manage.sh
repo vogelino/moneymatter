@@ -230,7 +230,9 @@ create_backup() {
   mv "$temp_dir" "$final_dir"
   trap - EXIT INT TERM
   echo "Backup created: $final_dir"
-  [[ "$should_prune" == "true" ]] && prune_backups
+  if [[ "$should_prune" == "true" ]]; then
+    prune_backups
+  fi
 }
 
 resolve_backup() {
