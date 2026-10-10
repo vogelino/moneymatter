@@ -11,9 +11,28 @@ die() {
   exit 1
 }
 
+copy_to_clipboard() {
+  local content="$1"
+
+  if command -v pbcopy >/dev/null 2>&1; then
+    printf '%s' "$content" | pbcopy
+  elif command -v wl-copy >/dev/null 2>&1; then
+    printf '%s' "$content" | wl-copy
+  elif command -v xclip >/dev/null 2>&1; then
+    printf '%s' "$content" | xclip -selection clipboard
+  elif command -v xsel >/dev/null 2>&1; then
+    printf '%s' "$content" | xsel --clipboard --input
+  else
+    return 1
+  fi
+}
+
 usage() {
   cat <<'EOF'
 MoneyMatter management
+
+Repository updates:
+  ./manage update                Merge upstream/dev into your fork and push it
 
 Local development:
   ./manage dev                   Start the local Docker development stack
@@ -89,6 +108,49 @@ command="${1:-help}"
 shift || true
 
 case "$command" in
+  update)
+    [[ "$#" -eq 0 ]] || die "update takes no arguments"
+    agent_prompt=""
+    command -v git >/dev/null || die "git is not installed locally"
+    [[ "$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null)" == "$ROOT" ]] || \
+      die "manage must be run from the MoneyMatter Git checkout"
+    [[ "$(git -C "$ROOT" branch --show-current)" == "dev" ]] || \
+      die "update must be run on the dev branch"
+    [[ -z "$(git -C "$ROOT" status --porcelain)" ]] || \
+      die "the checkout has uncommitted changes; commit or stash them before updating"
+    git -C "$ROOT" remote get-url origin >/dev/null 2>&1 || die "the origin remote is missing"
+    git -C "$ROOT" remote get-url upstream >/dev/null 2>&1 || \
+      die "the upstream remote is missing; add https://github.com/letehaha/moneymatter.git as upstream"
+
+    echo "Fetching your fork and the upstream project..."
+    git -C "$ROOT" fetch origin dev
+    git -C "$ROOT" fetch upstream dev
+
+    echo "Fast-forwarding from origin/dev..."
+    git -C "$ROOT" merge --ff-only origin/dev || \
+      die "local dev and origin/dev have diverged; reconcile them manually before updating"
+
+    echo "Merging upstream/dev..."
+    if ! git -C "$ROOT" -c merge.ff=true merge --no-edit upstream/dev; then
+      git -C "$ROOT" merge --abort >/dev/null 2>&1 || true
+      agent_prompt="I tried to update my MoneyMatter fork by merging upstream/dev into dev, but the merge had conflicts and ./manage update aborted it. Please inspect this repository, merge upstream/dev into dev, resolve every conflict while preserving our fork-specific self-hosting and management changes, run the relevant checks, and leave the result uncommitted and unpushed for me to review."
+      echo >&2
+      echo "Ask your coding agent to resolve the update with this prompt:" >&2
+      echo >&2
+      printf '%s\n' "$agent_prompt" >&2
+      echo >&2
+      if copy_to_clipboard "$agent_prompt"; then
+        echo "The prompt was copied to your clipboard." >&2
+      else
+        echo "Clipboard access is unavailable; copy the prompt shown above." >&2
+      fi
+      die "upstream/dev could not be merged cleanly; the merge was aborted without changing your checkout"
+    fi
+
+    echo "Pushing the updated dev branch to your fork..."
+    git -C "$ROOT" push origin dev
+    echo "Fork update complete. Run './manage deploy' when you are ready to update Hetzner."
+    ;;
   dev)
     [[ "$#" -eq 0 ]] || die "dev takes no arguments"
     exec bash "$ROOT/scripts/docker-dev.sh" up -d --build

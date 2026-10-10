@@ -42,6 +42,25 @@ Check the setup:
 ```
 
 Commit and push the version you intend to deploy before `./manage deploy`.
+
+## Updating from the original project
+
+Run this from a clean local `dev` branch to merge the latest original-project
+changes into your fork and push the result to `origin/dev`:
+
+```bash
+./manage update
+```
+
+The command fetches both `origin/dev` and `upstream/dev`, fast-forwards your
+local branch from your fork, and then merges the upstream branch. It refuses to
+run with uncommitted changes or from another branch. If upstream changes
+conflict with fork-specific management files, it aborts the merge cleanly so
+you can review the conflict manually. It then prints a ready-to-use request for
+your coding agent and copies that request to the clipboard when a supported
+clipboard utility is available. Updating the fork does not deploy it; run
+`./manage deploy` separately when you are ready.
+
 The server checkout is updated with `git pull --ff-only`, so deployment stops
 instead of guessing if the server has local code changes or divergent history.
 Set `DEPLOY_UPDATE_CODE=false` in `.deploy.env` only when another process keeps

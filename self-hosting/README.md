@@ -25,6 +25,7 @@ development and the production server:
 
 ```bash
 ./manage dev
+./manage update
 ./manage deploy
 ./manage status
 ./manage backup
