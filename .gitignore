@@ -107,6 +107,10 @@ jspm_packages/
 .env.production
 # Self-hosting kit secrets (lives beside the compose file in self-hosting/).
 self-hosting/.env
+.deploy.env
+
+# Self-hosting backups (database, attachments, and a private env copy).
+self-hosting/backups/
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache

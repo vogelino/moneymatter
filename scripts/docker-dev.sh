@@ -33,6 +33,23 @@ COMPOSE_FILE="${DOCKER_DEV_COMPOSE_FILE:-$ROOT/docker/dev/docker-compose.yml}"
 BASE_ENV="$ROOT/.env.development"
 LOCAL_ENV="$ROOT/.env.development.local"
 
+# Docker Desktop provides `docker compose` on macOS. Some Linux installations
+# still expose Compose as the standalone `docker-compose` command, so support
+# both and fail before passing Compose flags to the plain Docker CLI.
+if docker compose version >/dev/null 2>&1; then
+  COMPOSE_COMMAND=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1 && docker-compose version >/dev/null 2>&1; then
+  COMPOSE_COMMAND=(docker-compose)
+else
+  echo "error: Docker Compose is not available." >&2
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "Install and start Docker Desktop, then retry: https://docs.docker.com/desktop/setup/install/mac-install/" >&2
+  else
+    echo "Install the Docker Compose plugin, then retry." >&2
+  fi
+  exit 1
+fi
+
 if [[ ! -f "$BASE_ENV" ]]; then
   echo "error: $BASE_ENV not found. Copy .env.template to .env.development first." >&2
   exit 1
@@ -163,4 +180,4 @@ else
   echo "[$PROJECT] frontend: https://localhost:$(read_var "$BASE_ENV" PORT)  backend: https://localhost:$(read_var "$BASE_ENV" APPLICATION_PORT)" >&2
 fi
 
-exec docker compose "${ARGS[@]}" "$@"
+exec "${COMPOSE_COMMAND[@]}" "${ARGS[@]}" "$@"

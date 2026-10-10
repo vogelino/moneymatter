@@ -18,6 +18,23 @@ docker compose up -d
 Open `http://<host>:8080`. Full walkthrough:
 [setup guide](docs/setup-guide.md).
 
+## Day-to-day management
+
+From a development checkout, `./manage` provides one command surface for local
+development and the production server:
+
+```bash
+./manage dev
+./manage deploy
+./manage status
+./manage backup
+./manage backups
+```
+
+Copy `.deploy.env.example` to `.deploy.env` once to tell it which SSH host and
+server path to use. See [management cycle](docs/management-cycle.md) for deploy,
+restart, scheduled backup, restore, and recovery instructions.
+
 ## Documentation
 
 - [Setup guide](docs/setup-guide.md) – prerequisites, quickstart, exposing
@@ -31,6 +48,8 @@ Open `http://<host>:8080`. Full walkthrough:
 - [Environment variable reference](docs/environment-reference.md) – every
   `.env` setting: required, optional features, frontend runtime, overlays.
 - [Troubleshooting](docs/troubleshooting.md) – common issues and fixes.
+- [Management cycle](docs/management-cycle.md) – simple local development,
+  deploy, restart, health checks, and automated backup/restore commands.
 
 ## What's in this folder
 

@@ -38,7 +38,8 @@
     "postinstall": "chmod +x ./post-install.sh && ./post-install.sh",
     "format": "npx oxfmt .",
     "format:check": "npx oxfmt --check .",
-    "knip": "npx -w packages/backend knip && npx -w packages/frontend knip"
+    "knip": "npx -w packages/backend knip && npx -w packages/frontend knip",
+    "manage": "./manage"
   },
   "dependencies": {
     "cross-env": "^7.0.3",

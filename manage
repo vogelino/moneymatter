@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# Friendly local/remote command entry point. Run ./manage help for usage.
+
+set -Eeuo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEPLOY_ENV="$ROOT/.deploy.env"
+
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'EOF'
+MoneyMatter management
+
+Local development:
+  ./manage dev                   Start the local Docker development stack
+  ./manage stop                  Stop it
+  ./manage logs [service]        Follow local logs
+  ./manage clean                 Delete the local containers and dev data
+
+Hetzner server:
+  ./manage doctor                Check local tools and the server connection
+  ./manage deploy                Update code, back up, deploy, and health-check
+  ./manage restart               Restart the production app and health-check
+  ./manage status                Show production container status
+  ./manage server-logs [service] Follow production logs
+  ./manage backup [label]        Create a production backup
+  ./manage backups               List production backups
+  ./manage restore <name>        Restore a named production backup
+  ./manage schedule-backups      Install the server's daily backup schedule
+
+First-time setup:
+  cp .deploy.env.example .deploy.env
+  # Edit DEPLOY_HOST and DEPLOY_PATH, then run ./manage doctor
+EOF
+}
+
+load_deploy_config() {
+  [[ -f "$DEPLOY_ENV" ]] || die "missing .deploy.env; copy .deploy.env.example and edit it first"
+
+  # This is a user-owned configuration file, equivalent to shell config.
+  set -a
+  # shellcheck disable=SC1090
+  source "$DEPLOY_ENV"
+  set +a
+
+  [[ -n "${DEPLOY_HOST:-}" ]] || die "DEPLOY_HOST is empty in .deploy.env"
+  [[ "${DEPLOY_HOST}" =~ ^[a-zA-Z0-9._@-]+$ ]] || die "DEPLOY_HOST contains unsupported characters"
+  [[ "${DEPLOY_PATH:-}" == /* ]] || die "DEPLOY_PATH must be an absolute path"
+  [[ "${DEPLOY_PATH}" != "/" ]] || die "DEPLOY_PATH cannot be /"
+  [[ "${DEPLOY_PATH}" =~ ^/[a-zA-Z0-9._/-]+$ ]] || die "DEPLOY_PATH contains unsupported characters"
+  [[ "${DEPLOY_UPDATE_CODE:-true}" == "true" || "${DEPLOY_UPDATE_CODE:-true}" == "false" ]] || \
+    die "DEPLOY_UPDATE_CODE must be true or false"
+
+  # Keep the array non-empty for the Bash 3.2 shipped with macOS. Under
+  # `set -u`, expanding an empty array is otherwise an "unbound variable".
+  SSH_COMMAND=(ssh)
+  if [[ -n "${DEPLOY_SSH_PORT:-}" ]]; then
+    [[ "$DEPLOY_SSH_PORT" =~ ^[0-9]+$ ]] || die "DEPLOY_SSH_PORT must be a number"
+    SSH_COMMAND+=(-p "$DEPLOY_SSH_PORT")
+  fi
+}
+
+remote_manage() {
+  local tty="$1"
+  shift
+  local remote_command quoted_arg
+
+  printf -v remote_command \
+    'cd %q && if [[ ! -f self-hosting/manage.sh ]]; then echo %q >&2; exit 1; fi; bash self-hosting/manage.sh' \
+    "$DEPLOY_PATH" \
+    "error: self-hosting/manage.sh is not installed on the server; commit and push the management files, then run './manage deploy'"
+  for arg in "$@"; do
+    printf -v quoted_arg ' %q' "$arg"
+    remote_command+="$quoted_arg"
+  done
+
+  if [[ "$tty" == "yes" ]]; then
+    "${SSH_COMMAND[@]}" -t "$DEPLOY_HOST" "$remote_command"
+  else
+    "${SSH_COMMAND[@]}" "$DEPLOY_HOST" "$remote_command"
+  fi
+}
+
+command="${1:-help}"
+shift || true
+
+case "$command" in
+  dev)
+    [[ "$#" -eq 0 ]] || die "dev takes no arguments"
+    exec bash "$ROOT/scripts/docker-dev.sh" up -d --build
+    ;;
+  stop)
+    [[ "$#" -eq 0 ]] || die "stop takes no arguments"
+    exec bash "$ROOT/scripts/docker-dev.sh" down
+    ;;
+  logs)
+    [[ "$#" -le 1 ]] || die "logs accepts at most one service name"
+    exec bash "$ROOT/scripts/docker-dev.sh" logs -f "$@"
+    ;;
+  clean)
+    [[ "$#" -eq 0 ]] || die "clean takes no arguments"
+    echo "This removes the local development database and volumes."
+    read -r -p "Continue? [y/N] " answer
+    [[ "$answer" =~ ^[Yy]$ ]] || exit 0
+    exec bash "$ROOT/scripts/docker-dev.sh" down -v --remove-orphans
+    ;;
+  doctor)
+    [[ "$#" -eq 0 ]] || die "doctor takes no arguments"
+    load_deploy_config
+    command -v docker >/dev/null || die "Docker is not installed locally"
+    docker compose version >/dev/null || die "the Docker Compose plugin is not available locally"
+    command -v ssh >/dev/null || die "ssh is not installed locally"
+    echo "Local tools: OK"
+    "${SSH_COMMAND[@]}" "$DEPLOY_HOST" \
+      "cd $(printf %q "$DEPLOY_PATH") && test -f self-hosting/.env && test -f self-hosting/manage.sh && docker compose version >/dev/null"
+    echo "Server checkout, production env, and Docker Compose: OK"
+    ;;
+  deploy)
+    [[ "$#" -eq 0 ]] || die "deploy takes no arguments"
+    load_deploy_config
+    if [[ "${DEPLOY_UPDATE_CODE:-true}" == "true" ]]; then
+      "${SSH_COMMAND[@]}" "$DEPLOY_HOST" \
+        "cd $(printf %q "$DEPLOY_PATH") && git pull --ff-only"
+    fi
+    remote_manage no deploy
+    ;;
+  restart | status | backups | schedule-backups)
+    [[ "$#" -eq 0 ]] || die "$command takes no arguments"
+    load_deploy_config
+    remote_manage no "$command"
+    ;;
+  server-logs)
+    [[ "$#" -le 1 ]] || die "server-logs accepts at most one service name"
+    load_deploy_config
+    remote_manage yes logs "$@"
+    ;;
+  backup)
+    [[ "$#" -le 1 ]] || die "backup accepts at most one label"
+    load_deploy_config
+    remote_manage no backup "$@"
+    ;;
+  restore)
+    [[ "$#" -eq 1 ]] || die "restore requires exactly one backup name from './manage backups'"
+    load_deploy_config
+    remote_manage yes restore "$1"
+    ;;
+  help | -h | --help)
+    usage
+    ;;
+  *)
+    usage >&2
+    die "unknown command: $command"
+    ;;
+esac
