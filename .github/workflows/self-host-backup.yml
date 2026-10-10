@@ -1,0 +1,62 @@
+name: Self-host backup system
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-host-backup-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backup-lifecycle:
+    name: Production-style backup lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Create disposable production configuration
+        working-directory: self-hosting
+        env:
+          CI_BACKUP_DIR: /tmp/moneymatter-backup-ci-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          printf '%s\n' \
+            'NODE_ENV=production' \
+            'BETTER_AUTH_URL=https://moneymatter.test' \
+            'AUTH_ORIGIN=https://moneymatter.test' \
+            'APPLICATION_JWT_SECRET=ci-jwt-secret-not-used-outside-this-run-0001' \
+            'APP_SESSION_ID_SECRET=ci-session-secret-not-used-outside-this-run-0002' \
+            'BETTER_AUTH_SECRET=ci-auth-secret-not-used-outside-this-run-0003' \
+            'APPLICATION_DB_HOST=db' \
+            'APPLICATION_DB_PORT=5432' \
+            'APPLICATION_DB_USERNAME=budget_tracker' \
+            'APPLICATION_DB_PASSWORD=ci-database-password' \
+            'APPLICATION_DB_DATABASE=budget_tracker' \
+            'APPLICATION_DB_DIALECT=postgres' \
+            'APPLICATION_REDIS_HOST=redis' \
+            'APPLICATION_HOST=0.0.0.0' \
+            'APPLICATION_PORT=8081' \
+            'IMAGE_TAG=latest' \
+            'SELFHOST_FRONTEND_DOMAIN=moneymatter.test' \
+            'LETSENCRYPT_EMAIL=ci@example.com' \
+            'TRAEFIK_HTTP_PORT=18080' \
+            'TRAEFIK_HTTPS_PORT=18443' \
+            'MANAGEMENT_USE_TRAEFIK=true' \
+            "BACKUP_DIR=$CI_BACKUP_DIR" \
+            'BACKUP_KEEP_DAILY=3' \
+            'BACKUP_KEEP_WEEKLY=4' \
+            'BACKUP_KEEP_MONTHLY=12' \
+            > .env
+          chmod 600 .env
+
+      - name: Test backup lifecycle
+        env:
+          BACKUP_DIR: /tmp/moneymatter-backup-ci-${{ github.run_id }}-${{ github.run_attempt }}
+        run: bash self-hosting/tests/backup-system-ci.sh

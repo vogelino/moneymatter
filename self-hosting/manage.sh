@@ -18,20 +18,38 @@ read_env() {
 
 BACKUP_DIR="$(read_env BACKUP_DIR)"
 BACKUP_KEEP="$(read_env BACKUP_KEEP)"
+BACKUP_KEEP_DAILY="$(read_env BACKUP_KEEP_DAILY)"
+BACKUP_KEEP_WEEKLY="$(read_env BACKUP_KEEP_WEEKLY)"
+BACKUP_KEEP_MONTHLY="$(read_env BACKUP_KEEP_MONTHLY)"
 MANAGEMENT_HEALTH_TIMEOUT="$(read_env MANAGEMENT_HEALTH_TIMEOUT)"
 MANAGEMENT_BUILD_FROM_SOURCE="$(read_env MANAGEMENT_BUILD_FROM_SOURCE)"
 MANAGEMENT_USE_TRAEFIK="$(read_env MANAGEMENT_USE_TRAEFIK)"
 
 BACKUP_DIR="${BACKUP_DIR:-$SELF_HOST_DIR/backups}"
-BACKUP_KEEP="${BACKUP_KEEP:-14}"
 MANAGEMENT_HEALTH_TIMEOUT="${MANAGEMENT_HEALTH_TIMEOUT:-180}"
 MANAGEMENT_BUILD_FROM_SOURCE="${MANAGEMENT_BUILD_FROM_SOURCE:-false}"
 MANAGEMENT_USE_TRAEFIK="${MANAGEMENT_USE_TRAEFIK:-false}"
 
 [[ "$BACKUP_DIR" == /* ]] || BACKUP_DIR="$SELF_HOST_DIR/$BACKUP_DIR"
 [[ "$BACKUP_DIR" != "/" ]] || { echo "error: BACKUP_DIR cannot be /" >&2; exit 1; }
-[[ "$BACKUP_KEEP" =~ ^[0-9]+$ ]] || { echo "error: BACKUP_KEEP must be a number" >&2; exit 1; }
-((BACKUP_KEEP > 0)) || { echo "error: BACKUP_KEEP must be greater than zero" >&2; exit 1; }
+
+# Tiered retention is the default. BACKUP_KEEP remains supported for existing
+# installations, but the tier settings take precedence when any is present.
+if [[ -n "$BACKUP_KEEP_DAILY$BACKUP_KEEP_WEEKLY$BACKUP_KEEP_MONTHLY" || -z "$BACKUP_KEEP" ]]; then
+  BACKUP_RETENTION_MODE=tiered
+  BACKUP_KEEP_DAILY="${BACKUP_KEEP_DAILY:-3}"
+  BACKUP_KEEP_WEEKLY="${BACKUP_KEEP_WEEKLY:-4}"
+  BACKUP_KEEP_MONTHLY="${BACKUP_KEEP_MONTHLY:-12}"
+  for retention_value in "$BACKUP_KEEP_DAILY" "$BACKUP_KEEP_WEEKLY" "$BACKUP_KEEP_MONTHLY"; do
+    [[ "$retention_value" =~ ^[0-9]+$ ]] || { echo "error: tiered backup retention values must be numbers" >&2; exit 1; }
+  done
+  ((BACKUP_KEEP_DAILY + BACKUP_KEEP_WEEKLY + BACKUP_KEEP_MONTHLY > 0)) || \
+    { echo "error: at least one backup retention tier must be greater than zero" >&2; exit 1; }
+else
+  BACKUP_RETENTION_MODE=count
+  [[ "$BACKUP_KEEP" =~ ^[0-9]+$ ]] || { echo "error: BACKUP_KEEP must be a number" >&2; exit 1; }
+  ((BACKUP_KEEP > 0)) || { echo "error: BACKUP_KEEP must be greater than zero" >&2; exit 1; }
+fi
 [[ "$MANAGEMENT_HEALTH_TIMEOUT" =~ ^[0-9]+$ ]] || { echo "error: MANAGEMENT_HEALTH_TIMEOUT must be a number" >&2; exit 1; }
 ((MANAGEMENT_HEALTH_TIMEOUT > 0)) || { echo "error: MANAGEMENT_HEALTH_TIMEOUT must be greater than zero" >&2; exit 1; }
 [[ "$MANAGEMENT_BUILD_FROM_SOURCE" == "true" || "$MANAGEMENT_BUILD_FROM_SOURCE" == "false" ]] || \
@@ -81,13 +99,79 @@ safe_label() {
 
 prune_backups() {
   mapfile -t backups < <(find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -name '20????????????-*' -print | sort -r)
-  local index path
-  for ((index=BACKUP_KEEP; index<${#backups[@]}; index++)); do
-    path="${backups[$index]}"
+  local index path name timestamp day month week
+
+  if [[ "$BACKUP_RETENTION_MODE" == "count" ]]; then
+    for ((index=BACKUP_KEEP; index<${#backups[@]}; index++)); do
+      path="${backups[$index]}"
+      [[ "$path" == "$BACKUP_DIR"/20????????????-* ]] || die "refusing to prune unexpected path: $path"
+      rm -rf -- "$path"
+      echo "Pruned old backup: $(basename "$path")"
+    done
+    return
+  fi
+
+  # Process newest first so each bucket retains exactly its newest backup.
+  # A path kept by several tiers is stored once and satisfies all of them.
+  declare -A keep=() seen_days=() seen_weeks=() seen_months=()
+  local daily_count=0 weekly_count=0 monthly_count=0
+  for path in "${backups[@]}"; do
+    name="$(basename "$path")"
+    timestamp="${name%%-*}"
+    day="${timestamp:0:8}"
+    month="${timestamp:0:6}"
+    week="$(date -u -d "${day:0:4}-${day:4:2}-${day:6:2}" +%G-W%V)"
+
+    if ((daily_count < BACKUP_KEEP_DAILY)) && [[ -z "${seen_days[$day]:-}" ]]; then
+      seen_days[$day]=1
+      keep[$path]=1
+      ((daily_count += 1))
+    fi
+    if ((weekly_count < BACKUP_KEEP_WEEKLY)) && [[ -z "${seen_weeks[$week]:-}" ]]; then
+      seen_weeks[$week]=1
+      keep[$path]=1
+      ((weekly_count += 1))
+    fi
+    if ((monthly_count < BACKUP_KEEP_MONTHLY)) && [[ -z "${seen_months[$month]:-}" ]]; then
+      seen_months[$month]=1
+      keep[$path]=1
+      ((monthly_count += 1))
+    fi
+  done
+
+  for path in "${backups[@]}"; do
+    [[ -n "${keep[$path]:-}" ]] && continue
     [[ "$path" == "$BACKUP_DIR"/20????????????-* ]] || die "refusing to prune unexpected path: $path"
     rm -rf -- "$path"
-    echo "Pruned old backup: $(basename "$path")"
+    echo "Pruned backup outside retention tiers: $(basename "$path")"
   done
+}
+
+verify_backup_files() {
+  local directory="$1"
+
+  echo "Verifying compressed files and checksums..."
+  gzip -t "$directory/database.sql.gz"
+  if [[ -f "$directory/attachments.tar.gz" ]]; then
+    gzip -t "$directory/attachments.tar.gz"
+    compose run --rm --no-deps -T --entrypoint sh backend \
+      -c 'tar tzf - >/dev/null' < "$directory/attachments.tar.gz"
+  fi
+  (cd "$directory" && sha256sum --check SHA256SUMS)
+}
+
+verify_database_restore() {
+  local dump_file="$1" verification_db status
+  verification_db="moneymatter_backup_verify_$(date -u +%Y%m%d%H%M%S)_$$"
+
+  echo "Verifying database dump with a temporary restore..."
+  compose exec -T db sh -c 'createdb -U "$POSTGRES_USER" "$1"' sh "$verification_db"
+  status=0
+  gunzip -c "$dump_file" | compose exec -T db \
+    sh -c 'psql --quiet --set ON_ERROR_STOP=on -U "$POSTGRES_USER" -d "$1"' sh "$verification_db" || status=$?
+  compose exec -T db sh -c 'dropdb --if-exists --force -U "$POSTGRES_USER" "$1"' sh "$verification_db" || true
+
+  [[ "$status" -eq 0 ]] || die "database verification restore failed"
 }
 
 create_backup() {
@@ -126,9 +210,15 @@ create_backup() {
     echo "label=$label"
     echo "image_tag=${image_tag:-latest}"
     echo "git_revision=$(git -C "$SELF_HOST_DIR/.." rev-parse HEAD 2>/dev/null || echo unavailable)"
+    echo "validation=sha256,gzip,tar-list,database-restore"
   } > "$temp_dir/metadata.txt"
 
   (cd "$temp_dir" && sha256sum database.sql.gz production.env metadata.txt attachments* > SHA256SUMS)
+  verify_backup_files "$temp_dir"
+  verify_database_restore "$temp_dir/database.sql.gz"
+
+  # The final directory name only appears after every validation succeeds.
+  # Monitoring or sync jobs therefore never see a partially written backup.
   mv "$temp_dir" "$final_dir"
   trap - EXIT INT TERM
   echo "Backup created: $final_dir"
@@ -147,7 +237,9 @@ resolve_backup() {
 restore_backup() {
   local name="$1" answer
   resolve_backup "$name"
-  (cd "$RESTORE_DIR" && sha256sum --check SHA256SUMS)
+  require_running_db
+  verify_backup_files "$RESTORE_DIR"
+  verify_database_restore "$RESTORE_DIR/database.sql.gz"
 
   echo "This replaces the production database and local attachments with: $name"
   read -r -p "Type RESTORE to continue: " answer
@@ -157,7 +249,6 @@ restore_backup() {
   # the retention window, creating the safety backup must not delete it before
   # it can be restored.
   create_backup "pre-restore" false
-  require_running_db
   compose stop backend frontend >/dev/null || true
 
   echo "Restoring Postgres..."
@@ -188,7 +279,11 @@ install_backup_cron() {
     "$SELF_HOST_DIR" "$BACKUP_DIR/scheduled-backup.log" "$marker" >> "$temp"
   crontab "$temp"
   rm -f "$temp"
-  echo "Daily backup scheduled for 03:15 server time. Keeping the newest $BACKUP_KEEP backups."
+  if [[ "$BACKUP_RETENTION_MODE" == "tiered" ]]; then
+    echo "Daily backup scheduled for 03:15 server time. Retention: $BACKUP_KEEP_DAILY daily, $BACKUP_KEEP_WEEKLY weekly, $BACKUP_KEEP_MONTHLY monthly."
+  else
+    echo "Daily backup scheduled for 03:15 server time. Keeping the newest $BACKUP_KEEP backups."
+  fi
 }
 
 usage() {
