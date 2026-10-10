@@ -21,8 +21,8 @@ on:
 jobs:
   backup:
     runs-on: ubuntu-latest
-    # Only allow letehaha to manually trigger
-    if: ${{ github.event_name != 'workflow_dispatch' || github.actor == 'letehaha' }}
+    # This workflow manages upstream infrastructure; only letehaha may trigger it manually.
+    if: ${{ github.repository == 'letehaha/moneymatter' && (github.event_name != 'workflow_dispatch' || github.actor == 'letehaha') }}
 
     steps:
       - name: Create database backup and upload to R2
