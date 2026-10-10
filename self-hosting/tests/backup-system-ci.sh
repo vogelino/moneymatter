@@ -6,7 +6,7 @@ set -Eeuo pipefail
 SELF_HOST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$SELF_HOST_DIR"
 
-COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.traefik.yml)
+COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.traefik.yml -f docker-compose.ci.yml)
 BACKUP_DIR="${BACKUP_DIR:?BACKUP_DIR must be exported by the CI workflow}"
 
 cleanup() {

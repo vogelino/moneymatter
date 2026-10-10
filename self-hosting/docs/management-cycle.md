@@ -171,4 +171,7 @@ with the Traefik overlay and published images on an Ubuntu runner, then verifies
 database and attachment backup/restore, internal backup validation, rejection
 of a deliberately corrupted dump, and the exact 3-daily/4-weekly/12-monthly
 one-per-unit retention set. All credentials, volumes, and backups are disposable
-and are removed when the job finishes.
+and are removed when the job finishes. A final CI-only Compose overlay keeps the
+same Traefik TLS routing but disables ACME: public certificate authorities
+cannot issue a certificate for the reserved `moneymatter.test` domain, so the
+runner uses Traefik's generated self-signed certificate instead.

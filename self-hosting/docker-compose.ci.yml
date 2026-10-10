@@ -1,0 +1,25 @@
+# CI-only overlay for the production Traefik topology.
+#
+# Public certificate authorities cannot issue certificates for the reserved
+# moneymatter.test domain. Keep TLS routing enabled, but remove ACME from the
+# disposable test stack so Traefik serves its generated self-signed certificate
+# and never contacts Let's Encrypt.
+
+services:
+  traefik:
+    command: !override
+      - --providers.docker=true
+      - --providers.docker.exposedByDefault=false
+      - --providers.docker.network=budget-tracker
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+
+  frontend:
+    labels: !override
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.frontend.rule=Host(`${SELFHOST_FRONTEND_DOMAIN}`)'
+      - 'traefik.http.routers.frontend.entrypoints=websecure'
+      - 'traefik.http.routers.frontend.tls=true'
+      - 'traefik.http.services.frontend.loadbalancer.server.port=${LISTEN_PORT:-80}'
