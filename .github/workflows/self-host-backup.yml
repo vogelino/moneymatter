@@ -49,6 +49,7 @@ jobs:
             'TRAEFIK_HTTP_PORT=18080' \
             'TRAEFIK_HTTPS_PORT=18443' \
             'MANAGEMENT_USE_TRAEFIK=true' \
+            'MANAGEMENT_EXTRA_COMPOSE_FILE=docker-compose.ci.yml' \
             "BACKUP_DIR=$CI_BACKUP_DIR" \
             'BACKUP_KEEP_DAILY=3' \
             'BACKUP_KEEP_WEEKLY=4' \

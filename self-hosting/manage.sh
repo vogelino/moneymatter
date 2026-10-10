@@ -24,6 +24,7 @@ BACKUP_KEEP_MONTHLY="$(read_env BACKUP_KEEP_MONTHLY)"
 MANAGEMENT_HEALTH_TIMEOUT="$(read_env MANAGEMENT_HEALTH_TIMEOUT)"
 MANAGEMENT_BUILD_FROM_SOURCE="$(read_env MANAGEMENT_BUILD_FROM_SOURCE)"
 MANAGEMENT_USE_TRAEFIK="$(read_env MANAGEMENT_USE_TRAEFIK)"
+MANAGEMENT_EXTRA_COMPOSE_FILE="$(read_env MANAGEMENT_EXTRA_COMPOSE_FILE)"
 
 BACKUP_DIR="${BACKUP_DIR:-$SELF_HOST_DIR/backups}"
 MANAGEMENT_HEALTH_TIMEOUT="${MANAGEMENT_HEALTH_TIMEOUT:-180}"
@@ -56,10 +57,17 @@ fi
   { echo "error: MANAGEMENT_BUILD_FROM_SOURCE must be true or false" >&2; exit 1; }
 [[ "$MANAGEMENT_USE_TRAEFIK" == "true" || "$MANAGEMENT_USE_TRAEFIK" == "false" ]] || \
   { echo "error: MANAGEMENT_USE_TRAEFIK must be true or false" >&2; exit 1; }
+if [[ -n "$MANAGEMENT_EXTRA_COMPOSE_FILE" ]]; then
+  [[ "$MANAGEMENT_EXTRA_COMPOSE_FILE" =~ ^docker-compose\.[a-zA-Z0-9][a-zA-Z0-9._-]*\.ya?ml$ ]] || \
+    { echo "error: MANAGEMENT_EXTRA_COMPOSE_FILE must be a docker-compose.*.yml file in self-hosting/" >&2; exit 1; }
+  [[ -f "$SELF_HOST_DIR/$MANAGEMENT_EXTRA_COMPOSE_FILE" ]] || \
+    { echo "error: management Compose overlay does not exist: $MANAGEMENT_EXTRA_COMPOSE_FILE" >&2; exit 1; }
+fi
 
 COMPOSE_ARGS=(-f docker-compose.yml)
 [[ "$MANAGEMENT_USE_TRAEFIK" == "true" ]] && COMPOSE_ARGS+=(-f docker-compose.traefik.yml)
 [[ "$MANAGEMENT_BUILD_FROM_SOURCE" == "true" ]] && COMPOSE_ARGS+=(-f docker-compose.build.yml)
+[[ -n "$MANAGEMENT_EXTRA_COMPOSE_FILE" ]] && COMPOSE_ARGS+=(-f "$MANAGEMENT_EXTRA_COMPOSE_FILE")
 
 compose() {
   docker compose "${COMPOSE_ARGS[@]}" "$@"
@@ -237,12 +245,16 @@ resolve_backup() {
 restore_backup() {
   local name="$1" answer
   resolve_backup "$name"
-  require_running_db
-  verify_backup_files "$RESTORE_DIR"
-  verify_database_restore "$RESTORE_DIR/database.sql.gz"
+  # Keep the caller's stdin intact for the explicit confirmation below.
+  # Commands inside these checks provide their own input where required.
+  require_running_db </dev/null
+  verify_backup_files "$RESTORE_DIR" </dev/null
+  verify_database_restore "$RESTORE_DIR/database.sql.gz" </dev/null
 
   echo "This replaces the production database and local attachments with: $name"
-  read -r -p "Type RESTORE to continue: " answer
+  if ! read -r -p "Type RESTORE to continue: " answer; then
+    die "restore confirmation was not received"
+  fi
   [[ "$answer" == "RESTORE" ]] || { echo "Restore cancelled."; return; }
 
   # Do not prune here: if an intentionally selected old backup is just outside

@@ -152,16 +152,17 @@ restoring the data.
 
 These optional settings live only in the server's `self-hosting/.env`:
 
-| Setting                        | Default                | Meaning                                           |
-| ------------------------------ | ---------------------- | ------------------------------------------------- |
-| `BACKUP_DIR`                   | `self-hosting/backups` | Backup storage directory                          |
-| `BACKUP_KEEP_DAILY`            | `3`                    | Daily UTC buckets to retain                       |
-| `BACKUP_KEEP_WEEKLY`           | `4`                    | ISO-week buckets to retain                        |
-| `BACKUP_KEEP_MONTHLY`          | `12`                   | Calendar-month buckets to retain                  |
-| `BACKUP_KEEP`                  | unset                  | Legacy newest-N retention                         |
-| `MANAGEMENT_HEALTH_TIMEOUT`    | `180`                  | Seconds to wait for healthy containers            |
-| `MANAGEMENT_BUILD_FROM_SOURCE` | `false`                | Build this checkout instead of pulling app images |
-| `MANAGEMENT_USE_TRAEFIK`       | `false`                | Include the bundled Traefik Compose overlay       |
+| Setting                         | Default                | Meaning                                           |
+| ------------------------------- | ---------------------- | ------------------------------------------------- |
+| `BACKUP_DIR`                    | `self-hosting/backups` | Backup storage directory                          |
+| `BACKUP_KEEP_DAILY`             | `3`                    | Daily UTC buckets to retain                       |
+| `BACKUP_KEEP_WEEKLY`            | `4`                    | ISO-week buckets to retain                        |
+| `BACKUP_KEEP_MONTHLY`           | `12`                   | Calendar-month buckets to retain                  |
+| `BACKUP_KEEP`                   | unset                  | Legacy newest-N retention                         |
+| `MANAGEMENT_HEALTH_TIMEOUT`     | `180`                  | Seconds to wait for healthy containers            |
+| `MANAGEMENT_BUILD_FROM_SOURCE`  | `false`                | Build this checkout instead of pulling app images |
+| `MANAGEMENT_USE_TRAEFIK`        | `false`                | Include the bundled Traefik Compose overlay       |
+| `MANAGEMENT_EXTRA_COMPOSE_FILE` | unset                  | Add one local `docker-compose.*.yml` overlay      |
 
 ## Continuous verification
 
@@ -175,3 +176,5 @@ and are removed when the job finishes. A final CI-only Compose overlay keeps the
 same Traefik TLS routing but disables ACME: public certificate authorities
 cannot issue a certificate for the reserved `moneymatter.test` domain, so the
 runner uses Traefik's generated self-signed certificate instead.
+The workflow also gives that overlay to `manage.sh`, ensuring backup restores
+and health checks reconstruct the same Compose stack that the test started.
