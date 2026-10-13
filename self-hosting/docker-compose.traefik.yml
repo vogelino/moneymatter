@@ -14,7 +14,7 @@
 
 services:
   traefik:
-    image: traefik:v3.2
+    image: traefik:v3.6.25
     restart: unless-stopped
     networks: [budget-tracker]
     ports:
