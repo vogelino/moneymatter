@@ -18,7 +18,10 @@ COPY packages/shared/tsconfig*.json ./packages/shared/
 COPY post-install.sh ./
 COPY docker ./docker
 RUN chmod +x ./post-install.sh
-RUN npm ci --include=dev
+# The build context intentionally excludes .git. Install in production mode so
+# npm's prepare hook does not try to install Lefthook before source is copied;
+# docker-compose sets NODE_ENV=test on the running test container.
+RUN NODE_ENV=production npm ci --include=dev
 
 # Copy source codes
 COPY packages/backend ./packages/backend

@@ -34,7 +34,7 @@
     "docker:dev:migrate": "bash ./scripts/docker-dev.sh exec backend bash -c 'cd /app/packages/backend && npx sequelize-cli db:migrate'",
     "docker:dev:migrate-undo": "bash ./scripts/docker-dev.sh exec backend bash -c 'cd /app/packages/backend && npx sequelize-cli db:migrate:undo'",
     "docker:selfhost": "cd self-hosting && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build",
-    "prepare": "node -e \"if (process.env.NODE_ENV !== 'production'){process.exit(1)} \" || lefthook install",
+    "prepare": "node -e \"if (process.env.NODE_ENV !== 'production' && require('node:fs').existsSync('.git')) process.exit(1)\" || lefthook install",
     "postinstall": "chmod +x ./post-install.sh && ./post-install.sh",
     "format": "npx oxfmt .",
     "format:check": "npx oxfmt --check .",
